@@ -1,0 +1,16 @@
+[project]
+name = "deepconf-workspace"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "vllm==0.10.2",
+  "numpy",
+  "tqdm",
+  "transformers>=4.42.0",
+  "torch>=2.1.0; platform_system == 'Linux'",
+]
+
+[project.optional-dependencies]
+eval = [
+  "dynasor @ git+https://github.com/hao-ai-lab/Dynasor.git",
+]

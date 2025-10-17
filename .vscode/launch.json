@@ -1,0 +1,22 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug: Offline Inference Single",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/offline_inference_single.py",
+            "args": [
+                "--model", "Qwen/Qwen3-4B-Instruct-2507",
+                "--tensor_parallel_size", "1",
+                "--dataset", "aime_2025.jsonl",
+                "--budget", "10",
+                "--output_dir", "experiments/default/"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false
+        }
+    ]
+}
+
