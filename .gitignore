@@ -1,2 +1,4 @@
 GenAI/
 vllm/
+.venv/
+.vscode/
