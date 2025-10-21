@@ -229,10 +229,11 @@ def compute_all_voting_results(traces: List[Dict[str, Any]]) -> Dict[str, Any]:
                 return float(gen_tail)
         return float(gen_tail)
 
-    composite_confidences = [_composite_conf(t) for t in valid_traces]
     # Prepare voting_results container early to avoid local-variable access issues
     voting_results = {}
 
+    composite_confidences = [_composite_conf(t) for t in valid_traces]
+    
     # Add composite-weighted vote (uses combined judge+generator signal when available)
     if any(c > 0 for c in composite_confidences):
         composite_answer = weighted_majority_vote(answers, composite_confidences)
