@@ -249,8 +249,6 @@ def compute_all_voting_results(traces: List[Dict[str, Any]]) -> Dict[str, Any]:
     bottom_window_confidences = [calculate_bottom_window_confidence(trace) for trace in valid_traces]
     min_window_confidences = [calculate_bottom_window_confidence(trace, bottom_percent=-1) for trace in valid_traces]
     
-    voting_results = {}
-    
     # 1. Simple majority vote
     majority_answer = simple_majority_vote(answers)
     voting_results['majority'] = {
