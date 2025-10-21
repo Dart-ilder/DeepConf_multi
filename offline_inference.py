@@ -204,7 +204,9 @@ def main():
                        help='Disable multiple voting analysis')
     parser.add_argument('--judge_model', type=str, default=None,
                        help='Optional judge model name/path for dual-confidence scoring')
-    
+    parser.add_argument("--gpu_memory_utilization", type=float,default=0.6,
+                       help="Desired GPU memory utilization ratio (0 to 1) for model loading")
+
     args = parser.parse_args()
     
     # Load dataset
@@ -217,7 +219,7 @@ def main():
         raise ValueError(f"Question ID {args.qid} is out of range (0-{len(data)-1})")
     
     # Initialize DeepThinkLLM
-    deep_llm = DeepThinkLLM(model=args.model, judge_model=args.judge_model, tensor_parallel_size=args.tensor_parallel_size, enable_prefix_caching=True, max_model_len=args.max_model_len)
+    deep_llm = DeepThinkLLM(model=args.model, judge_model=args.judge_model, tensor_parallel_size=args.tensor_parallel_size, enable_prefix_caching=True, max_model_len=args.max_model_len,gpu_memory_utilization=args.gpu_memory_utilization)
     
     # Create custom sampling parameters
     sampling_params = SamplingParams(
