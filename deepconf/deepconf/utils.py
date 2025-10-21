@@ -52,14 +52,22 @@ def compute_confidence(logprobs: List[Dict]) -> List[float]:
 
 def compute_least_grouped(confs: List[float], group_size: int) -> List[float]:
     """Compute sliding window mean confidence"""
-    if len(confs) < group_size:
-        return [sum(confs) / len(confs)] if confs else [0]
-    
-    sliding_means = []
-    for i in range(len(confs) - group_size + 1):
-        window = confs[i:i + group_size]
-        sliding_means.append(round(sum(window) / len(window), 3))
-    return sliding_means
+    # Use numpy convolution for efficient sliding-window mean computation
+    if not confs:
+        return [0]
+
+    arr = np.array(confs, dtype=float)
+    if group_size <= 0:
+        raise ValueError("group_size must be > 0")
+
+    if arr.size < group_size:
+        return [float(np.round(np.mean(arr), 3))]
+
+    # moving average via convolution
+    kernel = np.ones(group_size, dtype=float)
+    window_sums = np.convolve(arr, kernel, mode='valid')
+    sliding = np.round(window_sums / group_size, 3).tolist()
+    return sliding
 
 
 # ============= VOTING FUNCTIONS =============
@@ -205,22 +213,34 @@ def compute_all_voting_results(traces: List[Dict[str, Any]]) -> Dict[str, Any]:
     
     # Extract answers for voting
     answers = [trace['extracted_answer'] for trace in valid_traces]
-    
-    # YOUR CODE:
-    # Specify new confidence aggregation strategy
-    # Each trace has ["confs"] and ["judge_confs"] as per token confidences.
-    # Combine the confs and judge_confs to get a single confidence score for each trace
-    # Feed it to weighted_majority_vote and return it as below:
-    
-    # majority_answer = simple_majority_vote(answers)
-    # voting_results['majority'] = {
-    #     'answer': majority_answer,
-    #     'num_votes': len(answers),
-    #     'confidence': None
-    # }
-    
-    # YOUR CODE:
-    
+    # Composite confidence aggregation:
+    # - If a judge_conf array exists for a trace, combine the generator tail confidence
+    #   and judge tail confidence via geometric mean (rewards agreement, penalizes disagreement).
+    # - Otherwise, fall back to the generator tail confidence.
+    def _composite_conf(trace: Dict[str, Any]) -> float:
+        gen_tail = calculate_tail_confidence(trace)
+        judge_confs = trace.get('judge_confs')
+        if judge_confs:
+            judge_tail = calculate_tail_confidence_from_confs(judge_confs)
+            # geometric mean for non-negative confidences
+            try:
+                return float(np.sqrt(max(gen_tail, 0.0) * max(judge_tail, 0.0)))
+            except Exception:
+                return float(gen_tail)
+        return float(gen_tail)
+
+    composite_confidences = [_composite_conf(t) for t in valid_traces]
+    # Prepare voting_results container early to avoid local-variable access issues
+    voting_results = {}
+
+    # Add composite-weighted vote (uses combined judge+generator signal when available)
+    if any(c > 0 for c in composite_confidences):
+        composite_answer = weighted_majority_vote(answers, composite_confidences)
+        voting_results['composite_confidence_weighted'] = {
+            'answer': composite_answer,
+            'num_votes': len(answers),
+            'confidence': float(np.mean(composite_confidences))
+        }
     
     # Calculate different types of confidences (generator model)
     mean_confidences = [calculate_mean_confidence(trace) for trace in valid_traces]
