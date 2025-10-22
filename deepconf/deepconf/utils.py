@@ -243,6 +243,220 @@ def compute_all_voting_results(traces: List[Dict[str, Any]]) -> Dict[str, Any]:
             'confidence': float(np.mean(composite_confidences))
         }
     
+    def calculate_confidence_variance(confs: List[float]) -> float:
+        """Calculate variance of confidence scores"""
+        if not confs or len(confs) < 2:
+            return float('inf')  # High variance = low confidence
+        return float(np.var(confs))
+
+    # В compute_all_voting_results:
+    if any(('judge_confs' in t and t['judge_confs']) for t in valid_traces):
+        gen_variances = [calculate_confidence_variance(t.get('confs', [])) for t in valid_traces]
+        judge_variances = [calculate_confidence_variance(t.get('judge_confs', [])) for t in valid_traces]
+        
+        # Inverse variance weighting (lower variance = higher weight)
+        dual_stability_weights = [
+            1.0 / (1.0 + gv + jv) for gv, jv in zip(gen_variances, judge_variances)
+        ]
+        
+        if any(w > 0 for w in dual_stability_weights):
+            stability_answer = weighted_majority_vote(answers, dual_stability_weights)
+            voting_results['dual_stability_weighted'] = {
+                'answer': stability_answer,
+                'num_votes': len(answers),
+                'confidence': float(np.mean(dual_stability_weights))
+            }
+
+    def calculate_confidence_correlation(gen_confs: List[float], judge_confs: List[float]) -> float:
+        """Calculate Pearson correlation between generator and judge confidences"""
+        if not gen_confs or not judge_confs:
+            return 0.0
+        
+        min_len = min(len(gen_confs), len(judge_confs))
+        if min_len < 10:  # Need sufficient data
+            return 0.0
+        
+        gen_arr = np.array(gen_confs[:min_len])
+        judge_arr = np.array(judge_confs[:min_len])
+        
+        try:
+            corr = np.corrcoef(gen_arr, judge_arr)[0, 1]
+            return float(corr) if not np.isnan(corr) else 0.0
+        except Exception:
+            return 0.0
+
+    # В compute_all_voting_results:
+    if any(('judge_confs' in t and t['judge_confs']) for t in valid_traces):
+        correlations = [
+            calculate_confidence_correlation(t.get('confs', []), t.get('judge_confs', []))
+            for t in valid_traces
+        ]
+        
+        # Filter top 20% by correlation
+        top_corr_threshold = np.percentile(correlations, 80)
+        high_corr_indices = [i for i, c in enumerate(correlations) if c >= top_corr_threshold]
+        
+        if high_corr_indices:
+            high_corr_answers = [answers[i] for i in high_corr_indices]
+            high_corr_weights = [tail_confidences[i] for i in high_corr_indices]
+            
+            corr_answer = weighted_majority_vote(high_corr_answers, high_corr_weights)
+            voting_results['high_correlation_filtered'] = {
+                'answer': corr_answer,
+                'num_votes': len(high_corr_answers),
+                'confidence': float(np.mean([correlations[i] for i in high_corr_indices]))
+            }
+
+        # В compute_all_voting_results:
+    if any(('judge_confs' in t and t['judge_confs']) for t in valid_traces):
+        def harmonic_mean(a: float, b: float) -> float:
+            if a <= 0 or b <= 0:
+                return 0.0
+            return 2.0 * a * b / (a + b)
+        
+        dual_harmonic = [
+            harmonic_mean(g, j) 
+            for g, j in zip(tail_confidences, judge_tail_confidences)
+        ]
+        
+        if any(w > 0 for w in dual_harmonic):
+            harmonic_answer = weighted_majority_vote(answers, dual_harmonic)
+            voting_results['dual_harmonic_tail_weighted'] = {
+                'answer': harmonic_answer,
+                'num_votes': len(answers),
+                'confidence': float(np.mean(dual_harmonic))
+            }
+
+    def calculate_confidence_trend(confs: List[float], window_size: int = 512) -> float:
+        """Calculate trend (slope) of confidence over time"""
+        if not confs or len(confs) < window_size:
+            return 0.0
+        
+        # Split into windows and calculate means
+        num_windows = len(confs) // window_size
+        if num_windows < 2:
+            return 0.0
+        
+        window_means = []
+        for i in range(num_windows):
+            start = i * window_size
+            end = start + window_size
+            window_means.append(np.mean(confs[start:end]))
+        
+        # Linear regression to find slope
+        x = np.arange(len(window_means))
+        try:
+            slope = np.polyfit(x, window_means, 1)[0]
+            return float(slope)
+        except Exception:
+            return 0.0
+
+    # В compute_all_voting_results:
+    if any(('judge_confs' in t and t['judge_confs']) for t in valid_traces):
+        gen_trends = [calculate_confidence_trend(t.get('confs', [])) for t in valid_traces]
+        judge_trends = [calculate_confidence_trend(t.get('judge_confs', [])) for t in valid_traces]
+        
+        # Both models should show positive or neutral trend
+        positive_trend_mask = [(gt >= 0 and jt >= 0) for gt, jt in zip(gen_trends, judge_trends)]
+        
+        trend_answers = [a for a, mask in zip(answers, positive_trend_mask) if mask]
+        trend_weights = [tc for tc, mask in zip(tail_confidences, positive_trend_mask) if mask]
+        
+        if trend_answers and any(w > 0 for w in trend_weights):
+            trend_answer = weighted_majority_vote(trend_answers, trend_weights)
+            voting_results['positive_trend_filtered'] = {
+                'answer': trend_answer,
+                'num_votes': len(trend_answers),
+                'confidence': float(np.mean(trend_weights)) if trend_weights else 0.0
+            }
+
+    def calculate_late_early_ratio(confs: List[float], split_point: float = 0.7) -> float:
+    """Calculate ratio of late vs early confidence"""
+    if not confs or len(confs) < 100:
+        return 1.0
+    
+    split_idx = int(len(confs) * split_point)
+    early_conf = np.mean(confs[:split_idx])
+    late_conf = np.mean(confs[split_idx:])
+    
+    if early_conf <= 0:
+        return 1.0
+    
+    return float(late_conf / early_conf)
+
+    # В compute_all_voting_results:
+    if any(('judge_confs' in t and t['judge_confs']) for t in valid_traces):
+        gen_ratios = [calculate_late_early_ratio(t.get('confs', [])) for t in valid_traces]
+        judge_ratios = [calculate_late_early_ratio(t.get('judge_confs', [])) for t in valid_traces]
+        
+        # Both should show improvement (ratio > 1.0)
+        improving_weights = [
+            tail_confidences[i] * min(gr, jr)  # Weight by improvement
+            for i, (gr, jr) in enumerate(zip(gen_ratios, judge_ratios))
+            if gr >= 1.0 and jr >= 1.0
+        ]
+        improving_answers = [
+            answers[i] for i, (gr, jr) in enumerate(zip(gen_ratios, judge_ratios))
+            if gr >= 1.0 and jr >= 1.0
+        ]
+        
+        if improving_answers and any(w > 0 for w in improving_weights):
+            improving_answer = weighted_majority_vote(improving_answers, improving_weights)
+            voting_results['improving_confidence_filtered'] = {
+                'answer': improving_answer,
+                'num_votes': len(improving_answers),
+                'confidence': float(np.mean(improving_weights)) if improving_weights else 0.0
+            }
+    
+    # В compute_all_voting_results:
+    if any(('judge_confs' in t and t['judge_confs']) for t in valid_traces):
+        # Collect multiple confidence metrics
+        metrics = {
+            'tail': tail_confidences,
+            'judge_tail': judge_tail_confidences,
+            'geo_mean': [np.sqrt(g * j) for g, j in zip(tail_confidences, judge_tail_confidences)],
+            'min': [min(g, j) for g, j in zip(tail_confidences, judge_tail_confidences)],
+        }
+        
+        # Rank answers by each metric
+        answer_scores = defaultdict(float)
+        for metric_name, metric_values in metrics.items():
+            # Sort indices by metric value (descending)
+            ranked_indices = np.argsort(metric_values)[::-1]
+            
+            # Assign Borda scores (n-rank)
+            n = len(ranked_indices)
+            for rank, idx in enumerate(ranked_indices):
+                answer = answers[idx]
+                answer_scores[answer] += (n - rank)
+        
+        if answer_scores:
+            borda_answer = max(answer_scores.keys(), key=lambda x: answer_scores[x])
+            voting_results['borda_count_multi_metric'] = {
+                'answer': borda_answer,
+                'num_votes': len(answers),
+                'confidence': float(answer_scores[borda_answer] / (len(metrics) * len(answers)))
+            }
+        
+    # В compute_all_voting_results:
+    if any(('judge_confs' in t and t['judge_confs']) for t in valid_traces):
+        trace_lengths = [len(t.get('confs', [])) for t in valid_traces]
+        length_penalty = [1.0 / np.log(1 + length / 1000.0) for length in trace_lengths]
+        
+        dual_length_adjusted = [
+            np.sqrt(g * j) * penalty
+            for g, j, penalty in zip(tail_confidences, judge_tail_confidences, length_penalty)
+        ]
+        
+        if any(w > 0 for w in dual_length_adjusted):
+            length_adj_answer = weighted_majority_vote(answers, dual_length_adjusted)
+            voting_results['dual_length_adjusted'] = {
+                'answer': length_adj_answer,
+                'num_votes': len(answers),
+                'confidence': float(np.mean(dual_length_adjusted))
+            }
+
+
     # Calculate different types of confidences (generator model)
     mean_confidences = [calculate_mean_confidence(trace) for trace in valid_traces]
     tail_confidences = [calculate_tail_confidence(trace) for trace in valid_traces]
