@@ -206,7 +206,7 @@ def main():
                        help='Optional judge model name/path for dual-confidence scoring')
     parser.add_argument("--gpu_memory_utilization", type=float,default=0.6,
                        help="Desired GPU memory utilization ratio (0 to 1) for model loading")
-    parser.add_argument("--max_num_batched_tokens", type=int,defualt=32768,
+    parser.add_argument("--max_num_batched_tokens", type=int,default=32768,
                         help='Number of tokens in one batch')
     parser.add_argument("--max_num_seqs", type=int,default=256,
                         help='Number of request in one time')
