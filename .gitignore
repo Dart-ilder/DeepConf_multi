@@ -1,4 +1,6 @@
 GenAI/
 vllm/
 .venv/
-.vscode/
+.vscode/build/
+dist/
+*.egg-info
