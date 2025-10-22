@@ -262,8 +262,8 @@ def main():
         # If not, you may need to pass them through vllm_kwargs
         init_kwargs['enforce_eager'] = args.enforce_eager
         # Uncomment if DeepThinkLLM/vLLM wrapper supports these:
-        init_kwargs['enable_reasoning'] = True
-        init_kwargs['reasoning_parser'] = 'deepseek_r1'
+        #init_kwargs['enable_reasoning'] = True
+        #init_kwargs['reasoning_parser'] = 'deepseek_r1'
 
     deep_llm = DeepThinkLLM(**init_kwargs)
 
@@ -320,7 +320,7 @@ def main():
                     trace['text'] = clean_thinking_output(trace['text'])
                 if 'extracted_answer' in trace:
                     trace['extracted_answer'] = clean_thinking_output(trace['extracted_answer'])
-                    
+
         # Evaluate results against ground truth
         if ground_truth and result.voting_results:
             evaluation = evaluate_voting_results(result.voting_results, ground_truth) # Calls equal_func for each method
