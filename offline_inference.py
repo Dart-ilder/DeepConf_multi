@@ -206,6 +206,10 @@ def main():
                        help='Optional judge model name/path for dual-confidence scoring')
     parser.add_argument("--gpu_memory_utilization", type=float,default=0.6,
                        help="Desired GPU memory utilization ratio (0 to 1) for model loading")
+    parser.add_argument("--max_num_batched_tokens", type=int,defualt=32768,
+                        help='Number of tokens in one batch')
+    parser.add_argument("--max_num_seqs", type=int,default=256,
+                        help='Number of request in one time')
 
     args = parser.parse_args()
     
@@ -219,7 +223,10 @@ def main():
         raise ValueError(f"Question ID {args.qid} is out of range (0-{len(data)-1})")
     
     # Initialize DeepThinkLLM
-    deep_llm = DeepThinkLLM(model=args.model, judge_model=args.judge_model, tensor_parallel_size=args.tensor_parallel_size, enable_prefix_caching=True, max_model_len=args.max_model_len,gpu_memory_utilization=args.gpu_memory_utilization)
+    deep_llm = DeepThinkLLM(model=args.model, judge_model=args.judge_model, tensor_parallel_size=args.tensor_parallel_size, 
+                            enable_prefix_caching=True, max_model_len=args.max_model_len,
+                            gpu_memory_utilization=args.gpu_memory_utilization,max_num_batched_tokens=args.max_num_batched_tokens,
+                            max_num_seqs=args.max_num_seqs)
     
     # Create custom sampling parameters
     sampling_params = SamplingParams(

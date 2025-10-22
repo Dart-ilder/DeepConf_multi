@@ -42,9 +42,6 @@ class DeepThinkLLM:
             "tensor_parallel_size": len(os.environ.get("CUDA_VISIBLE_DEVICES", "0").split(",")),
             "enable_prefix_caching": True,
             "trust_remote_code": True,
-            # Batching optimizations
-            "max_num_batched_tokens": 32768,  # Larger batch size for better throughput
-            "max_num_seqs": 256,  # Support more sequences in batch
         }
         default_kwargs.update(vllm_kwargs)
         
