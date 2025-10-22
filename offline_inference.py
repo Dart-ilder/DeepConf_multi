@@ -19,9 +19,13 @@ from tqdm import tqdm
 def prepare_prompt(question: str, tokenizer, model_type: str = "deepseek") -> str:
     """Prepare prompt for a single question"""
     if model_type == "deepseek":
-        # Format prompt using chat template for DeepSeek
         messages = [
             {"role": "system", "content": "该助手为DeepSeek-R1，由深度求索公司创造。\n今天是2025年5月28日，星期一。\n"},
+            {"role": "user", "content": question}
+        ]
+    elif model_type == "qwen_thinking":
+        # Format for Qwen Thinking models
+        messages = [
             {"role": "user", "content": question}
         ]
     else:
@@ -30,14 +34,22 @@ def prepare_prompt(question: str, tokenizer, model_type: str = "deepseek") -> st
             {"role": "user", "content": question}
         ]
     
-    full_prompt = tokenizer.apply_chat_template(
-        messages,
-        tokenize=False,
-        add_generation_prompt=True
-    )
+    # Add enable_thinking parameter for Qwen thinking models
+    if model_type == "qwen_thinking":
+        full_prompt = tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+            enable_thinking=True  # Critical for Qwen Thinking models
+        )
+    else:
+        full_prompt = tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True
+        )
     
     return full_prompt
-
 
 def prepare_prompt_gpt(question: str, tokenizer, reasoning_effort: str = "high") -> str:
     """Prepare prompt for GPT models with reasoning effort"""
@@ -53,7 +65,6 @@ def prepare_prompt_gpt(question: str, tokenizer, reasoning_effort: str = "high")
     )
     
     return full_prompt
-
 
 def quick_parse(text: str) -> str:
     """Parse LaTeX text content"""
@@ -71,6 +82,12 @@ def quick_parse(text: str) -> str:
             text = text[:start] + content + text[end + 1:]
     return text
 
+def clean_thinking_output(text: str) -> str:
+    """Remove <think>...</think> blocks from Qwen thinking model output"""
+    # Simple approach: remove everything between <think> and </think>
+    import re
+    cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+    return cleaned.strip()
 
 def equal_func(answer: str, ground_truth: str) -> bool:
     """Check if answer equals ground truth"""
@@ -186,9 +203,9 @@ def main():
                        help='Sliding window size for confidence computation')
     parser.add_argument('--max_tokens', type=int, default=10000,
                        help='Maximum tokens per generation')
-    parser.add_argument('--max_model_len', type=int, default=100000,
+    parser.add_argument('--max_model_len', type=int, default=32768,
                        help='Maximum model length for KV caching')
-    parser.add_argument('--model_type', type=str, default="gpt", choices=["deepseek", "gpt"],
+    parser.add_argument('--model_type', type=str, default="gpt", choices=["deepseek", "gpt","qwen_thinking"],
                        help='Model type for prompt formatting')
     parser.add_argument('--reasoning_effort', type=str, default="high",
                        help='Reasoning effort for GPT models')
@@ -210,9 +227,15 @@ def main():
                         help='Number of tokens in one batch')
     parser.add_argument("--max_num_seqs", type=int,default=256,
                         help='Number of request in one time')
-
+    parser.add_argument("--enforce_eager", action='store_true',
+                        help='Disable CUDA graphs (recommended if experiencing hangs)')
     args = parser.parse_args()
     
+    # Validate temperature for Qwen Thinking models
+    if args.model_type == "qwen_thinking" and args.temperature == 0:
+        print("WARNING: Qwen Thinking models do not work with temperature=0. Setting to 0.6")
+        args.temperature = 0.6
+
     # Load dataset
     print(f"Loading dataset from {args.dataset}...")
     with open(args.dataset, 'r', encoding='utf-8') as file:
@@ -222,12 +245,28 @@ def main():
     if args.qid is not None and (max(args.qid) >= len(data) or min(args.qid) < 0):
         raise ValueError(f"Question ID {args.qid} is out of range (0-{len(data)-1})")
     
-    # Initialize DeepThinkLLM
-    deep_llm = DeepThinkLLM(model=args.model, judge_model=args.judge_model, tensor_parallel_size=args.tensor_parallel_size, 
-                            enable_prefix_caching=True, max_model_len=args.max_model_len,
-                            gpu_memory_utilization=args.gpu_memory_utilization,max_num_batched_tokens=args.max_num_batched_tokens,
-                            max_num_seqs=args.max_num_seqs)
-    
+    init_kwargs = {
+        'model': args.model,
+        'judge_model': args.judge_model,
+        'tensor_parallel_size': args.tensor_parallel_size,
+        'enable_prefix_caching': True,
+        'max_model_len': args.max_model_len,
+        'gpu_memory_utilization': args.gpu_memory_utilization,
+        'max_num_batched_tokens': args.max_num_batched_tokens,
+        'max_num_seqs': args.max_num_seqs,
+    }
+    # Add reasoning parameters for Qwen Thinking models
+    if args.model_type == "qwen_thinking":
+        print("Enabling reasoning mode for Qwen Thinking model...")
+        # Note: Check if DeepThinkLLM supports these parameters
+        # If not, you may need to pass them through vllm_kwargs
+        init_kwargs['enforce_eager'] = args.enforce_eager
+        # Uncomment if DeepThinkLLM/vLLM wrapper supports these:
+        init_kwargs['enable_reasoning'] = True
+        init_kwargs['reasoning_parser'] = 'deepseek_r1'
+
+    deep_llm = DeepThinkLLM(**init_kwargs)
+
     # Create custom sampling parameters
     sampling_params = SamplingParams(
         temperature=args.temperature,
@@ -274,7 +313,14 @@ def main():
         sampling_params=sampling_params,
             compute_multiple_voting=not args.no_multiple_voting
         )
-        
+        # Clean thinking blocks from outputs if using Qwen Thinking
+        if args.model_type == "qwen_thinking":
+            for trace in result.all_traces:
+                if 'text' in trace:
+                    trace['text'] = clean_thinking_output(trace['text'])
+                if 'extracted_answer' in trace:
+                    trace['extracted_answer'] = clean_thinking_output(trace['extracted_answer'])
+                    
         # Evaluate results against ground truth
         if ground_truth and result.voting_results:
             evaluation = evaluate_voting_results(result.voting_results, ground_truth) # Calls equal_func for each method
