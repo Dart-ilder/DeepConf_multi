@@ -248,6 +248,8 @@ def main():
         print("Preparing prompt...")
         if args.model_type == "gpt":
             prompt = prepare_prompt_gpt(question, deep_llm.tokenizer, args.reasoning_effort)
+        else:
+            prompt = prepare_prompt(question, deep_llm.tokenizer, args.model_type)
         return prompt, ground_truth, question, qid
 
     context = []
