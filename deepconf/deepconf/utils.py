@@ -371,18 +371,18 @@ def compute_all_voting_results(traces: List[Dict[str, Any]]) -> Dict[str, Any]:
             }
 
     def calculate_late_early_ratio(confs: List[float], split_point: float = 0.7) -> float:
-    """Calculate ratio of late vs early confidence"""
-    if not confs or len(confs) < 100:
-        return 1.0
-    
-    split_idx = int(len(confs) * split_point)
-    early_conf = np.mean(confs[:split_idx])
-    late_conf = np.mean(confs[split_idx:])
-    
-    if early_conf <= 0:
-        return 1.0
-    
-    return float(late_conf / early_conf)
+        """Calculate ratio of late vs early confidence"""
+        if not confs or len(confs) < 100:
+            return 1.0
+        
+        split_idx = int(len(confs) * split_point)
+        early_conf = np.mean(confs[:split_idx])
+        late_conf = np.mean(confs[split_idx:])
+        
+        if early_conf <= 0:
+            return 1.0
+        
+        return float(late_conf / early_conf)
 
     # В compute_all_voting_results:
     if any(('judge_confs' in t and t['judge_confs']) for t in valid_traces):
