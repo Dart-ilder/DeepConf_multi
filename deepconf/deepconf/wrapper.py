@@ -231,7 +231,7 @@ class DeepThinkLLM:
             continuation_token_lengths.append(len(cont_ids))
 
         # Prefill scoring: no generation, return prompt logprobs
-        judge_params = SamplingParams(max_tokens=0, prompt_logprobs=1)
+        judge_params = SamplingParams(max_tokens=1, prompt_logprobs=1, temperature=0, stop=[""]  )
 
         judge_outputs = judge_llm.generate(combined_prompts, judge_params)
 
