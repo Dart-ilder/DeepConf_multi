@@ -43,7 +43,11 @@ class DeepThinkLLM:
             "enable_prefix_caching": True,
             "trust_remote_code": True,
         }
-        default_kwargs.update(vllm_kwargs)
+    # Remove any wrapper-only keys (like max_model_len_judge) before
+    # passing kwargs to the generator LLM constructor, because vLLM's
+    # EngineArgs does not accept arbitrary extra args.
+    filtered_vllm_kwargs = {k: v for k, v in vllm_kwargs.items() if k != 'max_model_len_judge'}
+    default_kwargs.update(filtered_vllm_kwargs)
         
         print("Initializing vLLM engine with optimized batching...")
         print(f"  - Prefix caching: {default_kwargs.get('enable_prefix_caching', False)}")
