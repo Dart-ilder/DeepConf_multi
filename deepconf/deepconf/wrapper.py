@@ -78,8 +78,28 @@ class DeepThinkLLM:
                 }
                 judge_defaults.update({k: v for k, v in vllm_kwargs.items() if k in (
                     "tensor_parallel_size", "enable_prefix_caching", "trust_remote_code",
-                    "max_num_batched_tokens", "max_num_seqs", "max_model_len", "gpu_memory_utilization"
+                    "max_num_batched_tokens", "max_num_seqs", "max_model_len", "gpu_memory_utilization",
+                    "max_model_len_judge"
                 )})
+                # Derive judge max_model_len: prefer explicit max_model_len_judge, else use max_model_len+100 if provided
+                try:
+                    provided_judge = vllm_kwargs.get('max_model_len_judge')
+                except Exception:
+                    provided_judge = None
+                try:
+                    base_model_len = vllm_kwargs.get('max_model_len')
+                except Exception:
+                    base_model_len = None
+                if provided_judge is not None:
+                    try:
+                        judge_defaults['max_model_len'] = int(provided_judge)
+                    except Exception:
+                        pass
+                elif base_model_len is not None:
+                    try:
+                        judge_defaults['max_model_len'] = int(base_model_len) + 100
+                    except Exception:
+                        pass
                 # Constrain GPU memory utilization for judge if not provided
                 judge_defaults.setdefault("gpu_memory_utilization", 0.6)
                 judge_init_start = time.time()
