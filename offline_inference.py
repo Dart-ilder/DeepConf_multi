@@ -205,8 +205,6 @@ def main():
                        help='Maximum tokens per generation')
     parser.add_argument('--max_model_len', type=int, default=32768,
                        help='Maximum model length for KV caching')
-    parser.add_argument('--max_model_len_judge', type=int, default=None,
-                       help='Optional max model length for judge model (overrides auto computation)')
     parser.add_argument('--model_type', type=str, default="gpt", choices=["deepseek", "gpt","qwen_thinking"],
                        help='Model type for prompt formatting')
     parser.add_argument('--reasoning_effort', type=str, default="high",
@@ -253,8 +251,6 @@ def main():
         'tensor_parallel_size': args.tensor_parallel_size,
         'enable_prefix_caching': True,
         'max_model_len': args.max_model_len,
-        # pass explicit judge max if provided
-        'max_model_len_judge': args.max_model_len_judge,
         'gpu_memory_utilization': args.gpu_memory_utilization,
         'max_num_batched_tokens': args.max_num_batched_tokens,
         'max_num_seqs': args.max_num_seqs,

@@ -43,12 +43,7 @@ class DeepThinkLLM:
             "enable_prefix_caching": True,
             "trust_remote_code": True,
         }
-        # Remove any wrapper-only keys (like max_model_len_judge) before
-        # passing kwargs to the generator LLM constructor, because vLLM's
-        # EngineArgs does not accept arbitrary extra args.
-        filtered_vllm_kwargs = {k: v for k, v in vllm_kwargs.items() if k != 'max_model_len_judge'}
-        default_kwargs.update(filtered_vllm_kwargs)
-        
+  
         print("Initializing vLLM engine with optimized batching...")
         print(f"  - Prefix caching: {default_kwargs.get('enable_prefix_caching', False)}")
         print(f"  - Max batched tokens: {default_kwargs.get('max_num_batched_tokens', 'default')}")
@@ -87,25 +82,16 @@ class DeepThinkLLM:
                 )})
                 # Derive judge max_model_len: prefer explicit max_model_len_judge, else use max_model_len+100 if provided
                 try:
-                    provided_judge = vllm_kwargs.get('max_model_len_judge')
-                except Exception:
-                    provided_judge = None
-                try:
                     base_model_len = vllm_kwargs.get('max_model_len')
                 except Exception:
                     base_model_len = None
-                if provided_judge is not None:
-                    try:
-                        judge_defaults['max_model_len'] = int(provided_judge)
-                    except Exception:
-                        pass
-                elif base_model_len is not None:
+                if base_model_len is not None:
                     try:
                         judge_defaults['max_model_len'] = int(base_model_len) + 100
                     except Exception:
                         pass
                 # Constrain GPU memory utilization for judge if not provided
-                judge_defaults.setdefault("gpu_memory_utilization", 0.6)
+                judge_defaults.setdefault("gpu_memory_utilization", 0.4)
                 judge_init_start = time.time()
                 try:
                     self.judge_llm = LLM(model=judge_model, logits_processors=[WrappedPerReqLogitsProcessor], **judge_defaults)
