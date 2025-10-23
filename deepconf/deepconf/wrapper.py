@@ -62,33 +62,11 @@ class DeepThinkLLM:
         print(f"Tokenizer initialized in {tokenizer_init_time:.2f} seconds")
         
         # Optional judge LLM (uses same tokenizer assumption)
+        # Defer initialization of the judge model until `deepthink` so we can
+        # compute a safe `max_model_len` based on the actual prompt length
+        # and the generator's max tokens (plus a safety buffer).
         self.judge_llm = None
-        if judge_model:
-            if judge_model == model:
-                print("Judge model equals generator; reusing LLM engine for judging.")
-                self.judge_llm = self.llm
-            else:
-                print("Initializing judge vLLM engine...")
-                judge_defaults = {
-                    "tensor_parallel_size": len(os.environ.get("CUDA_VISIBLE_DEVICES", "0").split(",")),
-                    "enable_prefix_caching": True,
-                    "trust_remote_code": True,
-                    "max_num_batched_tokens": 32768,
-                    "max_num_seqs": 256,
-                }
-                judge_defaults.update({k: v for k, v in vllm_kwargs.items() if k in (
-                    "tensor_parallel_size", "enable_prefix_caching", "trust_remote_code",
-                    "max_num_batched_tokens", "max_num_seqs", "max_model_len", "gpu_memory_utilization"
-                )})
-                # Constrain GPU memory utilization for judge if not provided
-                judge_defaults.setdefault("gpu_memory_utilization", 0.6)
-                judge_init_start = time.time()
-                try:
-                    self.judge_llm = LLM(model=judge_model, logits_processors=[WrappedPerReqLogitsProcessor], **judge_defaults)
-                    print(f"Judge vLLM engine initialized in {time.time() - judge_init_start:.2f} seconds")
-                except Exception as e:
-                    print(f"Failed to initialize judge LLM due to: {e}. Disabling judge scoring.")
-                    self.judge_llm = None
+        self.judge_model_name = judge_model
 
         # Store initialization times
         self.init_times = {
@@ -179,9 +157,59 @@ class DeepThinkLLM:
             )
         
         # Offline-only: if judge is available, score traces before voting
-        if self.judge_llm and result.all_traces and output.mode == "offline":
-            self._score_traces_with_judge(self.judge_llm, prompt, output.all_traces, window_size)
-            output.config["judge_model"] = self.judge_model_name
+        # Offline-only: if judge is requested, initialize judge LLM with a
+        # safe max_model_len computed from the prompt length and sampling_params
+        if self.judge_model_name and result.all_traces and output.mode == "offline":
+            # If judge model equals generator, reuse
+            if self.judge_model_name == self.model_name:
+                print("Judge model equals generator; reusing LLM engine for judging.")
+                self.judge_llm = self.llm
+            # Otherwise initialize judge LLM if not already
+            if self.judge_llm is None and self.judge_model_name != self.model_name:
+                # Compute prompt length in tokens
+                try:
+                    prompt_ids = self.tokenizer(prompt, add_special_tokens=False).input_ids
+                    prompt_len = len(prompt_ids)
+                except Exception:
+                    prompt_len = 0
+
+                # Estimate generator max tokens from sampling_params
+                gen_max_tokens = 0
+                try:
+                    gen_max_tokens = int(getattr(sampling_params, 'max_tokens', 0) or 0)
+                except Exception:
+                    gen_max_tokens = 0
+
+                safety_buffer = 100
+                max_model_len_judge = prompt_len + gen_max_tokens + safety_buffer
+
+                print(f"Initializing judge LLM with max_model_len={max_model_len_judge} (prompt={prompt_len} + gen_max={gen_max_tokens} + buf={safety_buffer})")
+
+                judge_defaults = {
+                    "tensor_parallel_size": len(os.environ.get("CUDA_VISIBLE_DEVICES", "0").split(",")),
+                    "enable_prefix_caching": True,
+                    "trust_remote_code": True,
+                    "max_num_batched_tokens": 32768,
+                    "max_num_seqs": 256,
+                    "max_model_len": max_model_len_judge,
+                }
+                judge_defaults.update({k: v for k, v in self.vllm_kwargs.items() if k in (
+                    "tensor_parallel_size", "enable_prefix_caching", "trust_remote_code",
+                    "max_num_batched_tokens", "max_num_seqs", "max_model_len", "gpu_memory_utilization"
+                )})
+                judge_defaults.setdefault("gpu_memory_utilization", 0.6)
+
+                try:
+                    judge_init_start = time.time()
+                    self.judge_llm = LLM(model=self.judge_model_name, logits_processors=[WrappedPerReqLogitsProcessor], **judge_defaults)
+                    print(f"Judge vLLM engine initialized in {time.time() - judge_init_start:.2f} seconds")
+                except Exception as e:
+                    print(f"Failed to initialize judge LLM due to: {e}. Disabling judge scoring.")
+                    self.judge_llm = None
+
+            if self.judge_llm:
+                self._score_traces_with_judge(self.judge_llm, prompt, output.all_traces, window_size)
+                output.config["judge_model"] = self.judge_model_name
 
         # Perform multiple voting analysis if requested
         if compute_multiple_voting and output.all_traces:
