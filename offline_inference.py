@@ -221,7 +221,7 @@ def main():
                        help='Disable multiple voting analysis')
     parser.add_argument('--judge_model', type=str, default=None,
                        help='Optional judge model name/path for dual-confidence scoring')
-    parser.add_argument("--gpu_memory_utilization", type=float,default=0.6,
+    parser.add_argument("--gpu_memory_utilization", type=float,default=0.4,
                        help="Desired GPU memory utilization ratio (0 to 1) for model loading")
     parser.add_argument("--max_num_batched_tokens", type=int,default=32768,
                         help='Number of tokens in one batch')

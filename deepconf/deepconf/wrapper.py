@@ -43,7 +43,9 @@ class DeepThinkLLM:
             "enable_prefix_caching": True,
             "trust_remote_code": True,
         }
-  
+        
+        default_kwargs.update(vllm_kwargs)
+
         print("Initializing vLLM engine with optimized batching...")
         print(f"  - Prefix caching: {default_kwargs.get('enable_prefix_caching', False)}")
         print(f"  - Max batched tokens: {default_kwargs.get('max_num_batched_tokens', 'default')}")
@@ -78,7 +80,6 @@ class DeepThinkLLM:
                 judge_defaults.update({k: v for k, v in vllm_kwargs.items() if k in (
                     "tensor_parallel_size", "enable_prefix_caching", "trust_remote_code",
                     "max_num_batched_tokens", "max_num_seqs", "max_model_len", "gpu_memory_utilization",
-                    "max_model_len_judge"
                 )})
                 # Derive judge max_model_len: prefer explicit max_model_len_judge, else use max_model_len+100 if provided
                 try:
