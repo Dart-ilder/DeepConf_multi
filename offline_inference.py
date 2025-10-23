@@ -229,6 +229,8 @@ def main():
                         help='Number of request in one time')
     parser.add_argument("--enforce_eager", action='store_true',
                         help='Disable CUDA graphs (recommended if experiencing hangs)')
+    parser.add_argument("--enable_chunked_prefill", action='store_true',
+                        help='Enable vLLM chunked prefill scheduling policy')
     args = parser.parse_args()
     
     # Validate temperature for Qwen Thinking models
@@ -254,7 +256,13 @@ def main():
         'gpu_memory_utilization': args.gpu_memory_utilization,
         'max_num_batched_tokens': args.max_num_batched_tokens,
         'max_num_seqs': args.max_num_seqs,
+        'enable_chunked_prefill': args.enable_chunked_prefill,
     }
+
+    # Throughput optimization: allow all n-completions to decode concurrently when possible
+    if args.max_num_seqs < args.budget:
+        print(f"max_num_seqs ({args.max_num_seqs}) < budget ({args.budget}); setting max_num_seqs to {args.budget} for better concurrency")
+        init_kwargs['max_num_seqs'] = args.budget
     # Add reasoning parameters for Qwen Thinking models
     if args.model_type == "qwen_thinking":
         print("Enabling reasoning mode for Qwen Thinking model...")

@@ -14,3 +14,8 @@ dependencies = [
 eval = [
   "dynasor @ git+https://github.com/hao-ai-lab/Dynasor.git",
 ]
+
+[tool.uv.workspace]
+members = [
+    "HW2",
+]

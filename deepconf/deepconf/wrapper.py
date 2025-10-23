@@ -412,12 +412,13 @@ class DeepThinkLLM:
         output.total_tokens = processed_results['total_tokens']
         output.total_traces_count = len(output.all_traces)
         output.avg_tokens_per_trace = output.total_tokens / output.total_traces_count if output.total_traces_count > 0 else 0
-        
-        # Basic voting (for backward compatibility)
-        self._perform_basic_voting(output)
+
         
         output.processing_time = time.time() - processing_start
         print(f"Processing completed in {output.processing_time:.2f}s")
+        print(f"Total tokens: {output.total_tokens}")
+        print(f"Average tokens per trace: {output.avg_tokens_per_trace}")
+        print(f"Throughput: {output.total_tokens / output.generation_time:.2f} tokens/s")
         
         return output
     

@@ -595,45 +595,72 @@ def process_batch_results(batch_outputs, window_size: int) -> Dict[str, Any]:
 
 def process_output_offline(output, window_size: int) -> Dict[str, Any]:
     """Process a single vLLM output for offline mode - stores full confidence array"""
+    # Vectorized extraction
     text = output.text
     token_ids = output.token_ids
     logprobs = output.logprobs
-    
-    # Calculate confidence but don't store full logprobs
+
     confs = compute_confidence(logprobs) if logprobs else []
-    
+
+    # Vectorized answer extraction (noop, placeholder for batch mode; here called per example)
     extracted_answer = extract_answer(text)
-    
+
     return {
         "stop_reason": output.finish_reason,
         "text": text,
         "token_ids": token_ids,
-        "num_tokens": len(token_ids) if token_ids else 0,
-        "confs": confs,  # Store full confidence array for offline analysis
+        "num_tokens": len(token_ids) if token_ids is not None else 0,
+        "confs": confs,
         "extracted_answer": extracted_answer,
     }
 
 
 def process_batch_results_offline(batch_outputs, window_size: int) -> Dict[str, Any]:
-    """Process batch results from vLLM for offline mode"""
-    # question_outputs = batch_outputs[0].outputs
-    question_outputs = []
-    for output_list in batch_outputs:
-        question_outputs += output_list.outputs
+    """Process batch results from vLLM for offline mode using vectorized processing"""
+    # Flatten all Output objects from a list of output batches
+    question_outputs = [output for output_list in batch_outputs for output in output_list.outputs]
+    num_traces = len(question_outputs)
 
-    # Process all traces for this question
-    traces = []
-    total_tokens = 0
-    
-    for output in question_outputs:
-        trace_data = process_output_offline(output, window_size)
-        traces.append(trace_data)
-        total_tokens += trace_data["num_tokens"]
-    
+    if num_traces == 0:
+        return {
+            'traces': [],
+            'total_tokens': 0,
+            'num_traces': 0
+        }
+
+    # Vectorized processing using list comprehensions and NumPy (if possible)
+    texts = [output.text for output in question_outputs]
+    logprobs_list = [output.logprobs for output in question_outputs]
+    stop_reasons = [output.finish_reason for output in question_outputs]
+    token_ids_list = [output.token_ids for output in question_outputs]
+
+    # Compute confidences vectorized
+    import numpy as np
+
+    # If compute_confidence supports a batch interface, you could replace this loop
+    confs_list = [compute_confidence(logprobs) if logprobs else [] for logprobs in logprobs_list]
+    num_tokens_list = [len(token_ids) if token_ids is not None else 0 for token_ids in token_ids_list]
+    extracted_answers = [extract_answer(text) for text in texts]
+
+    # Construct all trace dicts vectorized
+    traces = [
+        {
+            "stop_reason": stop_reason,
+            "text": text,
+            "num_tokens": num_tokens,
+            "confs": confs,
+            "extracted_answer": extracted_answer,
+        }
+        for stop_reason, text, num_tokens, confs, extracted_answer in zip(
+            stop_reasons, texts, num_tokens_list, confs_list, extracted_answers
+        )
+    ]
+
+    total_tokens = int(np.sum(num_tokens_list))
+
     return {
         'traces': traces,
         'total_tokens': total_tokens,
-        'num_traces': len(traces)
     }
 
 

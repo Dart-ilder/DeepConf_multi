@@ -4,3 +4,7 @@ vllm/
 .vscode/build/
 dist/
 *.egg-info
+deepconf/build/
+outputs/*
+Dynasor/
+__pycache__/
